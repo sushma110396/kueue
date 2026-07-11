@@ -1,0 +1,4 @@
+Experiment,Baseline Feasible Admitted,Baseline Infeasible Admitted,Modified Feasible Admitted,Modified Infeasible Admitted,Baseline CPU Wasted,Modified CPU Wasted
+10 infeasible / 50 feasible,2,8,50,0,96,0
+30 infeasible / 30 feasible,2,8,30,0,96,0
+50 infeasible / 10 feasible,2,8,10,0,96,0

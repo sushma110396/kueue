@@ -54,6 +54,7 @@ import (
 	"sigs.k8s.io/kueue/pkg/util/routine"
 	utiltesting "sigs.k8s.io/kueue/pkg/util/testing"
 	utiltestingapi "sigs.k8s.io/kueue/pkg/util/testing/v1beta2"
+	testingnode "sigs.k8s.io/kueue/pkg/util/testingjobs/node"
 	"sigs.k8s.io/kueue/pkg/workload"
 	"sigs.k8s.io/kueue/pkg/workloadslicing"
 )
@@ -178,6 +179,7 @@ func TestSchedule(t *testing.T) {
 
 		workloads      []kueue.Workload
 		objects        []client.Object
+		nodes          []corev1.Node
 		admissionError error
 
 		// additional*Queues can hold any extra queues needed by the tc
@@ -762,7 +764,208 @@ func TestSchedule(t *testing.T) {
 				},
 			},
 		},
+
+
+		"admit workload if at least one node has sufficient CPU": {
+	featureGates: map[featuregate.Feature]bool{features.PartialAdmission: true},
+	nodes: []corev1.Node{
+		*testingnode.MakeNode("node-1").
+			StatusAllocatable(corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("4"),
+				corev1.ResourceMemory: resource.MustParse("100Gi"),
+				corev1.ResourcePods:   resource.MustParse("100"),
+			}).
+			Ready().
+			Obj(),
+		*testingnode.MakeNode("node-2").
+			StatusAllocatable(corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("16"),
+				corev1.ResourceMemory: resource.MustParse("100Gi"),
+				corev1.ResourcePods:   resource.MustParse("100"),
+			}).
+			Ready().
+			Obj(),
+	},
+	workloads: []kueue.Workload{
+		*utiltestingapi.MakeWorkload("new", "eng-beta").
+			Queue("main").
+			PodSets(*utiltestingapi.MakePodSet("one", 1).
+				Request(corev1.ResourceCPU, "8").
+				Obj()).
+			Obj(),
+	},
+	wantWorkloads: []kueue.Workload{
+	*utiltestingapi.MakeWorkload("new", "eng-beta").
+		Queue("main").
+		PodSets(*utiltestingapi.MakePodSet("one", 1).
+			Request(corev1.ResourceCPU, "8").
+			Obj()).
+		Condition(metav1.Condition{
+			Type:               kueue.WorkloadQuotaReserved,
+			Status:             metav1.ConditionTrue,
+			Reason:             "QuotaReserved",
+			Message:            "Quota reserved in ClusterQueue eng-beta",
+			LastTransitionTime: metav1.NewTime(now),
+		}).
+		Condition(metav1.Condition{
+			Type:               kueue.WorkloadAdmitted,
+			Status:             metav1.ConditionTrue,
+			Reason:             "Admitted",
+			Message:            "The workload is admitted",
+			LastTransitionTime: metav1.NewTime(now),
+		}).
+		Admission(
+			utiltestingapi.MakeAdmission("eng-beta").
+				PodSets(utiltestingapi.MakePodSetAssignment("one").
+					Assignment(corev1.ResourceCPU, "on-demand", "8").
+					Count(1).
+					Obj()).
+				Obj(),
+		).
+		Obj(),
+},
+	wantAssignments: map[workload.Reference]kueue.Admission{
+	"eng-beta/new": {
+		ClusterQueue: "eng-beta",
+		PodSetAssignments: []kueue.PodSetAssignment{
+			utiltestingapi.MakePodSetAssignment("one").
+				Assignment(corev1.ResourceCPU, "on-demand", "8").
+				Count(1).
+				Obj(),
+		},
+	},
+},
+},
+
+		"admit workload if node has sufficient CPU for multiple containers": {
+	featureGates: map[featuregate.Feature]bool{features.PartialAdmission: true},
+	nodes: []corev1.Node{
+		*testingnode.MakeNode("node-1").
+			StatusAllocatable(corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("6"),
+				corev1.ResourceMemory: resource.MustParse("100Gi"),
+				corev1.ResourcePods:   resource.MustParse("100"),
+			}).
+			Ready().
+			Obj(),
+		*testingnode.MakeNode("node-2").
+			StatusAllocatable(corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("10"),
+				corev1.ResourceMemory: resource.MustParse("100Gi"),
+				corev1.ResourcePods:   resource.MustParse("100"),
+			}).
+			Ready().
+			Obj(),
+	},
+	workloads: []kueue.Workload{
+		*utiltestingapi.MakeWorkload("multi-container", "eng-beta").
+			Queue("main").
+			PodSets(kueue.PodSet{
+				Name:  "one",
+				Count: 1,
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						RestartPolicy: corev1.RestartPolicyNever,
+						Containers: []corev1.Container{
+							{
+								Name: "c1",
+								Resources: corev1.ResourceRequirements{
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU: resource.MustParse("3"),
+									},
+								},
+							},
+							{
+								Name: "c2",
+								Resources: corev1.ResourceRequirements{
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU: resource.MustParse("5"),
+									},
+								},
+							},
+						},
+					},
+				},
+			}).
+			Obj(),
+	},
+	wantWorkloads: []kueue.Workload{
+		*utiltestingapi.MakeWorkload("multi-container", "eng-beta").
+			Queue("main").
+			PodSets(kueue.PodSet{
+				Name:  "one",
+				Count: 1,
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						RestartPolicy: corev1.RestartPolicyNever,
+						Containers: []corev1.Container{
+							{
+								Name: "c1",
+								Resources: corev1.ResourceRequirements{
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU: resource.MustParse("3"),
+									},
+								},
+							},
+							{
+								Name: "c2",
+								Resources: corev1.ResourceRequirements{
+									Requests: corev1.ResourceList{
+										corev1.ResourceCPU: resource.MustParse("5"),
+									},
+								},
+							},
+						},
+					},
+				},
+			}).
+			Condition(metav1.Condition{
+				Type:               kueue.WorkloadQuotaReserved,
+				Status:             metav1.ConditionTrue,
+				Reason:             "QuotaReserved",
+				Message:            "Quota reserved in ClusterQueue eng-beta",
+				LastTransitionTime: metav1.NewTime(now),
+			}).
+			Condition(metav1.Condition{
+				Type:               kueue.WorkloadAdmitted,
+				Status:             metav1.ConditionTrue,
+				Reason:             "Admitted",
+				Message:            "The workload is admitted",
+				LastTransitionTime: metav1.NewTime(now),
+			}).
+			Admission(
+				utiltestingapi.MakeAdmission("eng-beta").
+					PodSets(utiltestingapi.MakePodSetAssignment("one").
+						Assignment(corev1.ResourceCPU, "on-demand", "8").
+						Count(1).
+						Obj()).
+					Obj(),
+			).
+			Obj(),
+	},
+	wantAssignments: map[workload.Reference]kueue.Admission{
+		"eng-beta/multi-container": {
+			ClusterQueue: "eng-beta",
+			PodSetAssignments: []kueue.PodSetAssignment{
+				utiltestingapi.MakePodSetAssignment("one").
+					Assignment(corev1.ResourceCPU, "on-demand", "8").
+					Count(1).
+					Obj(),
+			},
+		},
+	},
+},
 		"assign multiple resources and flavors": {
+			nodes: []corev1.Node{
+				*testingnode.MakeNode("node-1").
+					StatusAllocatable(corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("100"),
+						corev1.ResourceMemory: resource.MustParse("100Gi"),
+						corev1.ResourcePods:   resource.MustParse("100"),
+					}).
+					Ready().
+					Obj(),
+			},
 			featureGates: map[featuregate.Feature]bool{features.PartialAdmission: true},
 			workloads: []kueue.Workload{
 				*utiltestingapi.MakeWorkload("new", "eng-beta").
@@ -5897,7 +6100,11 @@ func TestSchedule(t *testing.T) {
 				allClusterQueues := append(clusterQueues, tc.additionalClusterQueues...)
 
 				clientBuilder := utiltesting.NewClientBuilder().
-					WithLists(&kueue.WorkloadList{Items: tc.workloads}, &kueue.LocalQueueList{Items: allQueues}).
+					WithLists(
+						&kueue.WorkloadList{Items: tc.workloads},
+						&kueue.LocalQueueList{Items: allQueues},
+						&corev1.NodeList{Items: tc.nodes},
+					).
 					WithObjects(append(
 						[]client.Object{
 							utiltesting.MakeNamespaceWrapper("default").Obj(),
