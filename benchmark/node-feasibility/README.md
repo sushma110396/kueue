@@ -1,8 +1,9 @@
-# Node Capacity Feasibility Benchmark
+# Node Capacity-Aware Admission Benchmark
 
 ## Objective
 
 Evaluate the impact of introducing node capacity-aware admission into Kueue's scheduler. Before reserving ClusterQueue quota, the scheduler determines whether a workload can fit on at least one node based on allocatable CPU and memory, preventing infeasible workloads from consuming admission resources.
+
 ---
 
 ## Test Environment
@@ -65,7 +66,7 @@ The following sections compare the baseline scheduler with the modified schedule
 
 ### Observation
 
-The baseline scheduler admitted infeasible workloads because admission considered only ClusterQueue quota. Eight workloads reserved 96 CPU, leaving capacity for only two runnable workloads despite sufficient node resources for the remaining jobs.
+The baseline scheduler admitted infeasible workloads because admission considered only the ClusterQueue quota. Eight workloads reserved 96 CPU, leaving enough quota for only two runnable workloads, even though the remaining runnable workloads could fit on the node.
 
 ---
 
