@@ -436,17 +436,13 @@ func (s *Scheduler) processEntry(
 	}
 	preemptedWorkloads.Insert(e.preemptionTargets)
 
-	/*if !s.nodeCapacityFeasible(ctx, log, e) {
-		e.markSkipped("Workload failed node capacity feasibility check")
-		return
-	}*/
-
-	/*if !s.nodeCapacityFeasible(ctx, log, e) {
+	//Node capacity feasiblity check
+	if !s.nodeCapacityFeasible(ctx, log, e) {
 		e.status = notNominated
 		e.inadmissibleMsg = "Workload failed node capacity feasibility check"
 		e.LastAssignment = nil
 		return
-	}*/
+	}
 
 	cq.AddUsage(usage)
 
