@@ -2,10 +2,7 @@
 
 ## Objective
 
-Evaluate the impact of a pre-admission node capacity feasibility check added to the Kueue scheduler.
-
-The feature rejects workloads whose CPU or memory requests exceed the allocatable resources of every node in the cluster. By preventing these workloads from entering the admission pipeline, the scheduler avoids reserving ClusterQueue quota for workloads that can never be scheduled.
-
+Evaluate the impact of introducing node capacity-aware admission into Kueue's scheduler. Before reserving ClusterQueue quota, the scheduler determines whether a workload can fit on at least one node based on allocatable CPU and memory, preventing infeasible workloads from consuming admission resources.
 ---
 
 ## Test Environment
@@ -25,7 +22,7 @@ The feature rejects workloads whose CPU or memory requests exceed the allocatabl
 
 ### Workloads
 
-Three mixed-workload scenarios were evaluated.
+Three workload mixes were evaluated to measure how infeasible workloads affect admission decisions under different queue compositions.
 
 | Scenario | Unschedulable Workloads | Runnable Workloads |
 |----------|------------------------:|-------------------:|
@@ -42,19 +39,13 @@ For every benchmark:
 1. Submit all unschedulable workloads.
 2. Submit all runnable workloads.
 
-This simulates a realistic scenario where invalid workloads enter the queue before runnable workloads, competing for the same ClusterQueue quota.
+This models a realistic burst in which infeasible workloads arrive ahead of runnable workloads and compete for the same ClusterQueue quota.
 
 ---
 
 ## Benchmark Results
 
-The benchmark compares the baseline scheduler with the modified scheduler across all three workload mixes.
-
-The accompanying charts summarize:
-
-- Runnable workload admissions
-- ClusterQueue quota reserved by unschedulable workloads
-- Runnable workload admission rate
+The following sections compare the baseline scheduler with the modified scheduler using the representative 30/30 workload mix. Results from all workload mixes are summarized in the charts below.
 
 ---
 
@@ -74,9 +65,7 @@ The accompanying charts summarize:
 
 ### Observation
 
-The baseline scheduler admitted unschedulable workloads until ClusterQueue quota was nearly exhausted.
-
-Eight unschedulable workloads reserved **96 CPU**, leaving only **4 CPU** available. Consequently, only **2 of 30 runnable workloads** could be admitted despite being schedulable.
+The baseline scheduler admitted infeasible workloads because admission considered only ClusterQueue quota. Eight workloads reserved 96 CPU, leaving capacity for only two runnable workloads despite sufficient node resources for the remaining jobs.
 
 ---
 
@@ -94,13 +83,7 @@ Eight unschedulable workloads reserved **96 CPU**, leaving only **4 CPU** availa
 
 ### Observation
 
-The node feasibility check rejected unschedulable workloads before quota reservation.
-
-As a result:
-
-- All runnable workloads were admitted.
-- No ClusterQueue quota was reserved by unschedulable workloads.
-- The scheduler avoided creating Pods that could never be scheduled.
+The enhanced admission pipeline identified infeasible workloads before reserving the ClusterQueue quota. As a result, quota remained available for runnable workloads, all runnable workloads were admitted, and unnecessary Pod creation was avoided.
 
 ---
 
@@ -117,9 +100,9 @@ As a result:
 
 ## Key Findings
 
-- Increased runnable workload admission rate from 4–20% in the baseline scheduler to 100% across all benchmark scenarios.
-- In the baseline scheduler, unschedulable workloads reserved 96% of the available ClusterQueue quota before runnable workloads could be admitted. The modified scheduler eliminated this wasted reservation, making the full quota available for runnable workloads.
-- Prevented futile Pod scheduling attempts for workloads that exceed the allocatable CPU or memory capacity of every node in the cluster, preventing FailedScheduling events by avoiding Pod creation.
+- Increased runnable workload admission rates from 4–20% with the baseline scheduler to 100% across all benchmark scenarios.
+- Eliminated ClusterQueue quota consumption by infeasible workloads, ensuring quota remained available for runnable workloads.
+- Prevented creation of Pods for workloads that exceeded the allocatable CPU or memory capacity of every node, reducing unnecessary scheduling attempts and FailedScheduling events.
 
 ---
 
@@ -129,7 +112,7 @@ As a result:
 ## Limitations
 
 - Benchmarks were evaluated on a single-node Kind cluster with homogeneous node capacity.
-- The feasibility check evaluates CPU and memory requests against node allocatable resources.
+- The admission logic considered only CPU and memory availability when determining node feasibility.
 - Other scheduling constraints (for example, node affinity, taints, tolerations, topology constraints, and storage availability) were outside the scope of this benchmark.
 - Scheduler admission latency and throughput were not measured.
-- Future work includes evaluating heterogeneous multi-node clusters and benchmarking scheduler latency under larger workloads.
+- Future work includes evaluating heterogeneous multi-node clusters, incorporating additional scheduling constraints into the feasibility evaluation, and measuring scheduler admission latency under higher workload volumes.
