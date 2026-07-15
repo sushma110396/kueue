@@ -117,10 +117,9 @@ As a result:
 
 ## Key Findings
 
-- Increased runnable workload admissions from **2 to 10–50 workloads** across three mixed-workload benchmark scenarios.
-- Achieved **100% runnable workload admission rate**, compared to **4–20%** with the baseline scheduler.
-- Eliminated ClusterQueue quota reservation for unschedulable workloads, reducing reserved quota from **96 CPU to 0 CPU** across all benchmark scenarios.
-- Preserved ClusterQueue quota for runnable workloads, enabling **100% admission of runnable jobs** across every workload mix evaluated.
+- Increased runnable workload admission rate from 4–20% in the baseline scheduler to 100% across all benchmark scenarios.
+- In the baseline scheduler, unschedulable workloads reserved 96% of the available ClusterQueue quota before runnable workloads could be admitted. The modified scheduler eliminated this wasted reservation, making the full quota available for runnable workloads.
+- Prevented futile Pod scheduling attempts for workloads that exceed the allocatable CPU or memory capacity of every node in the cluster, preventing FailedScheduling events by avoiding Pod creation.
 
 ---
 
