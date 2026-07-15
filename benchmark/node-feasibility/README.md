@@ -123,6 +123,9 @@ As a result:
 
 ---
 
+<img width="2790" height="947" alt="benchmark-charts" src="https://github.com/user-attachments/assets/2bb1ed0b-ca61-4849-8a8d-28adab6545ea" />
+
+
 ## Limitations
 
 - Benchmarks were evaluated on a single-node Kind cluster with homogeneous node capacity.
