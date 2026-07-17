@@ -1,0 +1,13 @@
+Modified (Node Feasibility Check Enabled)
+
+Feasible workloads submitted: 50
+Feasible workloads admitted: 50
+
+Infeasible workloads submitted: 10
+Infeasible workloads admitted: 0
+
+Total ClusterQueue quota: 100 CPU
+
+Quota consumed:
+  Infeasible workloads: 0 CPU
+  Feasible workloads: 100 CPU

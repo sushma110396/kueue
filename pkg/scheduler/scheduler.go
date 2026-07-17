@@ -289,6 +289,7 @@ func (s *Scheduler) schedule(ctx context.Context) wait.SpeedSignal {
 	ctx = ctrl.LoggerInto(ctx, log)
 	cycleStartTime := s.clock.Now()
 	log.V(2).Info("Scheduling cycle starts")
+	log.Info("TRACE: schedule() started")
 	defer func() {
 		log.V(2).Info("Scheduling cycle complete", "duration", s.clock.Since(cycleStartTime))
 	}()
@@ -297,6 +298,7 @@ func (s *Scheduler) schedule(ctx context.Context) wait.SpeedSignal {
 	// This operation blocks while the queues are empty.
 	headWorkloads := s.queues.Heads(ctx)
 	// If there are no elements, it means that the program is finishing.
+	log.Info("HEAD workloads collected", "headCount", len(headWorkloads))
 	if len(headWorkloads) == 0 {
 		return wait.KeepGoing
 	}
@@ -382,7 +384,6 @@ func (s *Scheduler) processEntry(
 	}
 	ctx = ctrl.LoggerInto(ctx, log)
 	log.V(2).Info("Attempting to schedule workload")
-
 	if features.Enabled(features.ConcurrentAdmission) && concurrentadmission.IsVariant(e.Obj) {
 		if moreFavorableSibling := s.findAdmittedMoreFavorableSibling(&e.Info, snapshot); moreFavorableSibling != nil {
 			log.V(3).Info("Skipping workload as a more favorable variant is already admitted", "moreFavorableVariant", klog.KObj(moreFavorableSibling.Obj))
@@ -434,6 +435,15 @@ func (s *Scheduler) processEntry(
 		return
 	}
 	preemptedWorkloads.Insert(e.preemptionTargets)
+
+	//Node capacity feasiblity check
+	if !s.nodeCapacityFeasible(ctx, log, e) {
+		e.status = notNominated
+		e.inadmissibleMsg = "Workload failed node capacity feasibility check"
+		e.LastAssignment = nil
+		return
+	}
+
 	cq.AddUsage(usage)
 
 	// Filter out the old workload slice from the preemption targets.
@@ -788,6 +798,7 @@ func updateAssignmentForTAS(log logr.Logger, snapshot *schdcache.Snapshot, cq *s
 // Note: this does not necessarily make the workload "admitted".
 func (s *Scheduler) admit(ctx context.Context, e *entry, cq *schdcache.ClusterQueueSnapshot, oldWorkloadSlice *preemption.Target) error {
 	log := ctrl.LoggerFrom(ctx)
+	log.Info("TRACE: admit()", "workload", klog.KObj(e.Obj))
 	admission := &kueue.Admission{
 		ClusterQueue:      e.ClusterQueue,
 		PodSetAssignments: e.assignment.ToAPI(),
